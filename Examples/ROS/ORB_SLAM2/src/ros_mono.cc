@@ -25,8 +25,7 @@
 #include<chrono>
 
 #include<ros/ros.h>
-#include <cv_bridge/cv_bridge.h>
-
+#include<std_msgs/MultiArrayLayout>
 #include<opencv2/core/core.hpp>
 
 #include"../../../include/System.h"
@@ -41,6 +40,10 @@ public:
     void GrabImage(const sensor_msgs::ImageConstPtr& msg);
 
     ORB_SLAM2::System* mpSLAM;
+    ros::NodeHandle nh;
+    ros::Publisher pub;
+    std_msgs::MultiArrayLayout msg;
+
 };
 
 int main(int argc, char **argv)
@@ -91,6 +94,12 @@ void ImageGrabber::GrabImage(const sensor_msgs::ImageConstPtr& msg)
     }
 
     mpSLAM->TrackMonocular(cv_ptr->image,cv_ptr->header.stamp.toSec());
+    cout <<mpSLAM->mpMapDrawer->mCameraPose<<endl;//remove
+    msg = mpSLAM->mpMapDrawer->mCameraPose
+    pub.publish(msg);
 }
 
 
+ImageGrabber::ImageGrabber(ORB_SLAM2::System* pSLAM):mpSLAM(pSLAM){
+    ros::Publisher pub = nh.advertise<std_msgs::MultiArrayLayout>("camera_pose_orb",12*sizeof(double))
+}
