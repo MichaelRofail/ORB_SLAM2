@@ -41,8 +41,7 @@ using namespace std;
 class ImageGrabber
 {
 public:
-    ImageGrabber(ORB_SLAM2::System* pSLAM, ros::NodeHandle& nh):mpSLAM(pSLAM){
-        pub = nh.advertise<geometry_msgs::PoseStamped>("ORB/pose",10000);
+    ImageGrabber(ORB_SLAM2::System* pSLAM):mpSLAM(pSLAM){
     }
 
     void GrabImage(const sensor_msgs::ImageConstPtr& msg);
@@ -51,10 +50,6 @@ public:
     ros::Publisher pub;
     tf::Quaternion qtf;
     tf::Matrix3x3 tf3d;
-    geometry_msgs::Point position;
-    geometry_msgs::Pose pose_msg;
-    geometry_msgs::PoseStamped pose_msg_stamped;
-    geometry_msgs::Quaternion qm;
     tf::TransformBroadcaster broadcaster;
 };
 
@@ -74,7 +69,7 @@ int main(int argc, char **argv)
     ORB_SLAM2::System SLAM(argv[1],argv[2],ORB_SLAM2::System::MONOCULAR,true);
 
     ros::NodeHandle nh;
-    ImageGrabber igb(&SLAM, nh);
+    ImageGrabber igb(&SLAM);
     ros::Subscriber sub = nh.subscribe("image_raw", 1, &ImageGrabber::GrabImage,&igb);
 
     ros::spin();
@@ -109,10 +104,7 @@ void ImageGrabber::GrabImage(const sensor_msgs::ImageConstPtr& msg)
     
     
     if(!mpSLAM->mpMapDrawer->mCameraPose.empty()){
-        position.x = (double)mpSLAM->mpMapDrawer->mCameraPose.at<float>(0,3);
-        position.y = (double)mpSLAM->mpMapDrawer->mCameraPose.at<float>(1,3); 
-        position.z = (double)mpSLAM->mpMapDrawer->mCameraPose.at<float>(2,3);
-        
+
         tf3d.setValue((double)mpSLAM->mpMapDrawer->mCameraPose.at<float>(0,0), 
         (double)mpSLAM->mpMapDrawer->mCameraPose.at<float>(0,1), 
         (double)mpSLAM->mpMapDrawer->mCameraPose.at<float>(0,2), 
@@ -124,15 +116,13 @@ void ImageGrabber::GrabImage(const sensor_msgs::ImageConstPtr& msg)
         (double)mpSLAM->mpMapDrawer->mCameraPose.at<float>(2,2));
 
         tf3d.getRotation(qtf);
-        pose_msg.position = position;
-        quaternionTFToMsg(qtf , qm);
-        pose_msg.orientation = qm;
-        pose_msg_stamped.pose = pose_msg;
-        pub.publish(pose_msg_stamped);
         broadcaster.sendTransform(
         tf::StampedTransform(
-        tf::Transform(qtf, tf::Vector3(position.x, position.y, position.z)),
-        ros::Time::now(),"base_link", "base_laser"));
+        tf::Transform(qtf, tf::Vector3((double)mpSLAM->mpMapDrawer->mCameraPose.at<float>(0,3),
+        (double)mpSLAM->mpMapDrawer->mCameraPose.at<float>(1,3), 
+        (double)mpSLAM->mpMapDrawer->mCameraPose.at<float>(2,3))),
+        ros::Time::now(),"world", "base"));
+    
     }
 }
 
