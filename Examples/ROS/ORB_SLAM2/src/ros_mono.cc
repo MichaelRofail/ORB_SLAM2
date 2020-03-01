@@ -25,12 +25,14 @@
 #include<chrono>
 
 #include<ros/ros.h>
-#include "std_msgs/MultiArrayLayout.h"
-#include "std_msgs/MultiArrayDimension.h"
-#include "std_msgs/Float32MultiArray.h"
+#include <tf/transform_broadcaster.h>
 #include "sensor_msgs/Image.h"
 #include <cv_bridge/cv_bridge.h>
 #include<opencv2/core/core.hpp>
+#include <nav_msgs/Odometry.h>
+#include <tf/transform_datatypes.h>
+#include "geometry_msgs/PoseStamped.h"
+#include <tf/transform_broadcaster.h>
 
 #include"../../../include/System.h"
 
@@ -40,17 +42,20 @@ class ImageGrabber
 {
 public:
     ImageGrabber(ORB_SLAM2::System* pSLAM, ros::NodeHandle& nh):mpSLAM(pSLAM){
-        pub = nh.advertise<std_msgs::Float32MultiArray>("ORB/pose",10000);
-        pose_msg.layout.dim.push_back(std_msgs::MultiArrayDimension());
+        pub = nh.advertise<geometry_msgs::PoseStamped>("ORB/pose",10000);
     }
 
     void GrabImage(const sensor_msgs::ImageConstPtr& msg);
 
     ORB_SLAM2::System* mpSLAM;
     ros::Publisher pub;
-    std_msgs::Float32MultiArray pose_msg;
-    vector<float> vec1 = {};
-
+    tf::Quaternion qtf;
+    tf::Matrix3x3 tf3d;
+    geometry_msgs::Point position;
+    geometry_msgs::Pose pose_msg;
+    geometry_msgs::PoseStamped pose_msg_stamped;
+    geometry_msgs::Quaternion qm;
+    tf::TransformBroadcaster broadcaster;
 };
 
 int main(int argc, char **argv)
@@ -102,29 +107,32 @@ void ImageGrabber::GrabImage(const sensor_msgs::ImageConstPtr& msg)
     mpSLAM->TrackMonocular(cv_ptr->image,cv_ptr->header.stamp.toSec());
     //cout <<mpSLAM->mpMapDrawer->mCameraPose<<endl;//remove
     
-    vec1.clear();
+    
     if(!mpSLAM->mpMapDrawer->mCameraPose.empty()){
-        vec1.push_back(mpSLAM->mpMapDrawer->mCameraPose.at<float>(0,0));
-        vec1.push_back(mpSLAM->mpMapDrawer->mCameraPose.at<float>(0,1));
-        vec1.push_back(mpSLAM->mpMapDrawer->mCameraPose.at<float>(0,2));
-        vec1.push_back(mpSLAM->mpMapDrawer->mCameraPose.at<float>(0,3));
-        vec1.push_back(mpSLAM->mpMapDrawer->mCameraPose.at<float>(1,0));
-        vec1.push_back(mpSLAM->mpMapDrawer->mCameraPose.at<float>(1,1));
-        vec1.push_back(mpSLAM->mpMapDrawer->mCameraPose.at<float>(1,2));
-        vec1.push_back(mpSLAM->mpMapDrawer->mCameraPose.at<float>(1,3));
-        vec1.push_back(mpSLAM->mpMapDrawer->mCameraPose.at<float>(2,0));
-        vec1.push_back(mpSLAM->mpMapDrawer->mCameraPose.at<float>(2,1));
-        vec1.push_back(mpSLAM->mpMapDrawer->mCameraPose.at<float>(2,2));
-        vec1.push_back(mpSLAM->mpMapDrawer->mCameraPose.at<float>(2,3));
+        position.x = (double)mpSLAM->mpMapDrawer->mCameraPose.at<float>(0,3);
+        position.y = (double)mpSLAM->mpMapDrawer->mCameraPose.at<float>(1,3); 
+        position.z = (double)mpSLAM->mpMapDrawer->mCameraPose.at<float>(2,3);
+        
+        tf3d.setValue((double)mpSLAM->mpMapDrawer->mCameraPose.at<float>(0,0), 
+        (double)mpSLAM->mpMapDrawer->mCameraPose.at<float>(0,1), 
+        (double)mpSLAM->mpMapDrawer->mCameraPose.at<float>(0,2), 
+        (double)mpSLAM->mpMapDrawer->mCameraPose.at<float>(1,0), 
+        (double)mpSLAM->mpMapDrawer->mCameraPose.at<float>(1,1), 
+        (double)mpSLAM->mpMapDrawer->mCameraPose.at<float>(1,2), 
+        (double)mpSLAM->mpMapDrawer->mCameraPose.at<float>(2,0), 
+        (double)mpSLAM->mpMapDrawer->mCameraPose.at<float>(2,1), 
+        (double)mpSLAM->mpMapDrawer->mCameraPose.at<float>(2,2));
 
-        pose_msg.layout.dim[0].size = 12*4;
-        pose_msg.layout.dim[0].stride = 1;
-        pose_msg.layout.dim[0].label = "x";
-
-        pose_msg.data.clear();
-        pose_msg.data.insert(pose_msg.data.end(), vec1.begin(), vec1.end());
-
-        pub.publish(pose_msg);
+        tf3d.getRotation(qtf);
+        pose_msg.position = position;
+        quaternionTFToMsg(qtf , qm);
+        pose_msg.orientation = qm;
+        pose_msg_stamped.pose = pose_msg;
+        pub.publish(pose_msg_stamped);
+        broadcaster.sendTransform(
+        tf::StampedTransform(
+        tf::Transform(qtf, tf::Vector3(position.x, position.y, position.z)),
+        ros::Time::now(),"base_link", "base_laser"));
     }
 }
 
