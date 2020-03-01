@@ -25,7 +25,11 @@
 #include<chrono>
 
 #include<ros/ros.h>
-#include<std_msgs/MultiArrayLayout>
+#include "std_msgs/MultiArrayLayout.h"
+#include "std_msgs/MultiArrayDimension.h"
+#include "std_msgs/Float32MultiArray.h"
+#include "sensor_msgs/Image.h"
+#include <cv_bridge/cv_bridge.h>
 #include<opencv2/core/core.hpp>
 
 #include"../../../include/System.h"
@@ -35,14 +39,17 @@ using namespace std;
 class ImageGrabber
 {
 public:
-    ImageGrabber(ORB_SLAM2::System* pSLAM):mpSLAM(pSLAM){}
+    ImageGrabber(ORB_SLAM2::System* pSLAM, ros::NodeHandle& nh):mpSLAM(pSLAM){
+        pub = nh.advertise<std_msgs::Float32MultiArray>("ORB/pose",10000);
+        pose_msg.layout.dim.push_back(std_msgs::MultiArrayDimension());
+    }
 
     void GrabImage(const sensor_msgs::ImageConstPtr& msg);
 
     ORB_SLAM2::System* mpSLAM;
-    ros::NodeHandle nh;
     ros::Publisher pub;
-    std_msgs::MultiArrayLayout msg;
+    std_msgs::Float32MultiArray pose_msg;
+    vector<float> vec1 = {};
 
 };
 
@@ -61,10 +68,9 @@ int main(int argc, char **argv)
     // Create SLAM system. It initializes all system threads and gets ready to process frames.
     ORB_SLAM2::System SLAM(argv[1],argv[2],ORB_SLAM2::System::MONOCULAR,true);
 
-    ImageGrabber igb(&SLAM);
-
-    ros::NodeHandle nodeHandler;
-    ros::Subscriber sub = nodeHandler.subscribe("/camera/image_raw", 1, &ImageGrabber::GrabImage,&igb);
+    ros::NodeHandle nh;
+    ImageGrabber igb(&SLAM, nh);
+    ros::Subscriber sub = nh.subscribe("image_raw", 1, &ImageGrabber::GrabImage,&igb);
 
     ros::spin();
 
@@ -94,12 +100,31 @@ void ImageGrabber::GrabImage(const sensor_msgs::ImageConstPtr& msg)
     }
 
     mpSLAM->TrackMonocular(cv_ptr->image,cv_ptr->header.stamp.toSec());
-    cout <<mpSLAM->mpMapDrawer->mCameraPose<<endl;//remove
-    msg = mpSLAM->mpMapDrawer->mCameraPose
-    pub.publish(msg);
+    //cout <<mpSLAM->mpMapDrawer->mCameraPose<<endl;//remove
+    
+    vec1.clear();
+    if(!mpSLAM->mpMapDrawer->mCameraPose.empty()){
+        vec1.push_back(mpSLAM->mpMapDrawer->mCameraPose.at<float>(0,0));
+        vec1.push_back(mpSLAM->mpMapDrawer->mCameraPose.at<float>(0,1));
+        vec1.push_back(mpSLAM->mpMapDrawer->mCameraPose.at<float>(0,2));
+        vec1.push_back(mpSLAM->mpMapDrawer->mCameraPose.at<float>(0,3));
+        vec1.push_back(mpSLAM->mpMapDrawer->mCameraPose.at<float>(1,0));
+        vec1.push_back(mpSLAM->mpMapDrawer->mCameraPose.at<float>(1,1));
+        vec1.push_back(mpSLAM->mpMapDrawer->mCameraPose.at<float>(1,2));
+        vec1.push_back(mpSLAM->mpMapDrawer->mCameraPose.at<float>(1,3));
+        vec1.push_back(mpSLAM->mpMapDrawer->mCameraPose.at<float>(2,0));
+        vec1.push_back(mpSLAM->mpMapDrawer->mCameraPose.at<float>(2,1));
+        vec1.push_back(mpSLAM->mpMapDrawer->mCameraPose.at<float>(2,2));
+        vec1.push_back(mpSLAM->mpMapDrawer->mCameraPose.at<float>(2,3));
+
+        pose_msg.layout.dim[0].size = 12*4;
+        pose_msg.layout.dim[0].stride = 1;
+        pose_msg.layout.dim[0].label = "x";
+
+        pose_msg.data.clear();
+        pose_msg.data.insert(pose_msg.data.end(), vec1.begin(), vec1.end());
+
+        pub.publish(pose_msg);
+    }
 }
 
-
-ImageGrabber::ImageGrabber(ORB_SLAM2::System* pSLAM):mpSLAM(pSLAM){
-    ros::Publisher pub = nh.advertise<std_msgs::MultiArrayLayout>("camera_pose_orb",12*sizeof(double))
-}
